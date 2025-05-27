@@ -1,0 +1,3 @@
+conda activate yolo-env1
+
+python reference.py --model Model/2/my_model.pt --source test.png --resolution 1280x1280
