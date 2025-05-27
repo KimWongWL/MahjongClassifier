@@ -1,0 +1,13 @@
+train: ../train/images
+val: ../valid/images
+test: ../test/images
+
+nc: 34
+names: ['bamboos_1', 'bamboos_2', 'bamboos_3', 'bamboos_4', 'bamboos_5', 'bamboos_6', 'bamboos_7', 'bamboos_8', 'bamboos_9', 'characters_1', 'characters_2', 'characters_3', 'characters_4', 'characters_5', 'characters_6', 'characters_7', 'characters_8', 'characters_9', 'circles_1', 'circles_2', 'circles_3', 'circles_4', 'circles_5', 'circles_6', 'circles_7', 'circles_8', 'circles_9', 'east', 'green', 'north', 'red', 'south', 'west', 'white']
+
+roboflow:
+  workspace: test-ul13l
+  project: my-first-project-fqqce
+  version: 1
+  license: CC BY 4.0
+  url: https://universe.roboflow.com/test-ul13l/my-first-project-fqqce/dataset/1
