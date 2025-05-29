@@ -20,15 +20,21 @@ parser.add_argument('--threshold', help='Minimum confidence threshold for displa
 parser.add_argument('--resolution', help='Resolution in WxH to display inference results at (example: "640x480"), \
                     otherwise, match source resolution',
                     default=None)
-
+parser.add_argument('--ROI', help='Adjust the ROI (example: top-left (100,100), bottom-right (500,400)), \
+                    otherwise, detect on the whole image',
+                    nargs=4, type=int, metavar=('x1', 'y1', 'x2', 'y2'),
+                    default=(-1,-1,-1,-1)) # Default ROI is the whole image
 args = parser.parse_args()
 
 
 # Parse user inputs
 model_path = args.model
 img_source = args.source
-min_threshold = args.thresh
+min_threshold = args.threshold
 user_res = args.resolution
+# get the ROI coordinates if specified
+if args.ROI:
+    roi_x1, roi_y1, roi_x2, roi_y2 = args.ROI
 
 # Check if model file exists and is valid
 if (not os.path.exists(model_path)):
@@ -96,6 +102,26 @@ while True:
     if resize == True:
         frame = cv2.resize(frame,(resW,resH))
 
+    # Check if ROI is specified, if so, crop the frame to the ROI
+    if roi_x1 >= 0 and roi_y1 >= 0 and roi_x2 >= 0 and roi_y2 >= 0:
+        # return error if ROI coordinates are invalid
+        if roi_x1 >= roi_x2 or roi_y1 >= roi_y2:
+            print('ERROR: Invalid ROI coordinates specified. Please try again.')
+            sys.exit(0)
+            
+        if resize:
+            sizeW = resW
+            sizeH = resH
+        else:
+            sizeW = frame.shape[1]
+            sizeH = frame.shape[0]
+        if sizeW <= 0 or sizeH <= 0:
+                print('ERROR: Invalid image size. Please check the input image.')
+                sys.exit(0)
+
+        # Crop the frame to the specified ROI
+        frame = frame[roi_y1:roi_y2, roi_x1:roi_x2]
+
     # Run inference on frame
     results = model(frame, verbose=False)
 
@@ -122,15 +148,11 @@ while True:
         conf = detections[i].conf.item()
 
         # print all detections
-        print(f'Detection {i}: Class: {classname}, Confidence: {conf:.2f}, BBox: ({xmin}, {ymin}), ({xmax}, {ymax})')
-
-        # Draw box if confidence threshold is high enough
-        #if conf > 0.5:
-
-        color = bbox_colors[classidx % 10]
-        cv2.rectangle(frame, (xmin,ymin), (xmax,ymax), color, 2)
+        # print(f'Detection {i}: Class: {classname}, Confidence: {conf:.2f}, BBox: ({xmin}, {ymin}), ({xmax}, {ymax})')
 
         # draw label with class name and confidence in 3 decimal places
+        color = bbox_colors[classidx % 10]
+        cv2.rectangle(frame, (xmin,ymin), (xmax,ymax), color, 2)
         conf = f'{conf:.3f}' # Format confidence to 3 decimal places
         label = f'{classname} : {conf}'
         labelSize, baseLine = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1) # Get font size
