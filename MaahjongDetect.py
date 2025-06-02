@@ -16,14 +16,22 @@ parser.add_argument('--model', help='Path to YOLO model file (example: "runs/det
 parser.add_argument('--source', help='Image source, can be image file ("test.jpg"), image folder ("test_dir")', 
                     required=True)
 parser.add_argument('--threshold', help='Minimum confidence threshold for displaying detected objects (example: "0.4")',
-                    default=0.5)
+                    default=0.2)
 parser.add_argument('--resolution', help='Resolution in WxH to display inference results at (example: "640x480"), \
                     otherwise, match source resolution',
                     default=None)
+parser.add_argument('--showRes', help='show the result of the dectection in a new window',
+                    default=False)
+parser.add_argument('--showAll', help='show the result below the threshold with black bounding box',
+                    default=False)
 parser.add_argument('--ROI', help='Adjust the ROI (example: top-left (100,100), bottom-right (500,400)), \
                     otherwise, detect on the whole image',
                     nargs=4, type=int, metavar=('x1', 'y1', 'x2', 'y2'),
                     default=(-1,-1,-1,-1)) # Default ROI is the whole image
+parser.add_argument('--ignore', help='Ignore area: specify as x1 y1 x2 y2. Can be used multiple times.',
+                    nargs=4, type=int, metavar=('x1', 'y1', 'x2', 'y2'),
+                    action='append',
+                    default=[])
 args = parser.parse_args()
 
 
@@ -32,9 +40,23 @@ model_path = args.model
 img_source = args.source
 min_threshold = args.threshold
 user_res = args.resolution
-# get the ROI coordinates if specified
-if args.ROI:
-    roi_x1, roi_y1, roi_x2, roi_y2 = args.ROI
+show_res = args.showRes
+show_all = args.showAll
+roi_x1, roi_y1, roi_x2, roi_y2 = args.ROI
+ignore_areas = args.ignore
+
+# validate the ignore area values
+for area in ignore_areas:
+    if len(area) != 4:
+        print('ERROR: Ignore area must be specified as x1 y1 x2 y2.')
+        sys.exit(0)
+    if area[0] >= area[2] or area[1] >= area[3]:
+        print('ERROR: Invalid ignore area coordinates specified. Please try again.')
+        sys.exit(0)
+
+# sort the ignore areas by x1, y1
+if len(ignore_areas) > 2:
+    ignore_areas.sort(key=lambda x: (x[0], x[1]))
 
 # Check if model file exists and is valid
 if (not os.path.exists(model_path)):
@@ -55,10 +77,10 @@ elif os.path.isfile(img_source):
     if ext in img_ext_list:
         source_type = 'image'
     else:
-        print(f'File extension {ext} is not supported.')
+        print(f'ERROR: File extension {ext} is not supported.')
         sys.exit(0)
 else:
-    print(f'Input {img_source} is invalid. Please try again.')
+    print(f'ERROR: Input {img_source} is invalid. Please try again.')
     sys.exit(0)
 
 # Parse user-specified display resolution
@@ -134,38 +156,62 @@ while True:
     # Go through each detection and get bbox coords, confidence, and class
     for i in range(len(detections)):
 
+        # count the number of objects in the image
+        object_count +=  1
+
         # Get bounding box coordinates
         # Ultralytics returns results in Tensor format, Converte to a regular Python array
         xyxy_tensor = detections[i].xyxy.cpu() # Detections in Tensor format in CPU memory
         xyxy = xyxy_tensor.numpy().squeeze() # Convert tensors to Numpy array
         xmin, ymin, xmax, ymax = xyxy.astype(int) # Extract individual coordinates and convert to int
+        
+        # Get bounding box confidence
+        conf = detections[i].conf.item()
+        if conf < float(min_threshold) and not show_all:
+            # Skip detections below the confidence threshold
+            continue
+
+        # check if the bounding box area is within the ignore areas
+        ignore = False
+        for area in ignore_areas:
+            if not (xmax < area[0] or xmin > area[2] or ymax < area[1] or ymin > area[3]):
+                # Bounding box is within the ignore area
+                ignore = True
+                break
+        if ignore:
+            continue
 
         # Get bounding box class ID and name
         classidx = int(detections[i].cls.item())
         classname = labels[classidx]
 
-        # Get bounding box confidence
-        conf = detections[i].conf.item()
-
         # print all detections
         # print(f'Detection {i}: Class: {classname}, Confidence: {conf:.2f}, BBox: ({xmin}, {ymin}), ({xmax}, {ymax})')
 
-        # draw label with class name and confidence in 3 decimal places
-        color = bbox_colors[classidx % 10]
-        cv2.rectangle(frame, (xmin,ymin), (xmax,ymax), color, 2)
-        conf = f'{conf:.3f}' # Format confidence to 3 decimal places
-        label = f'{classname} : {conf}'
-        labelSize, baseLine = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1) # Get font size
-        label_ymin = max(ymin, labelSize[1] + 10) # Make sure not to draw label too close to top of window
-        cv2.rectangle(frame, (xmin, label_ymin-labelSize[1]-10), (xmin+labelSize[0], label_ymin+baseLine-10), color, cv2.FILLED) # Draw white box to put label text in
-        cv2.putText(frame, label, (xmin, label_ymin-7), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1) # Draw label text
+        if show_res:
+            # draw label with class name and confidence in 3 decimal places
+            color = bbox_colors[classidx % 10]
+            text_color = (0, 0, 0)
+            if show_all and conf < float(min_threshold):
+                # Draw bounding box for objects below the threshold
+                color = (0, 0, 0)
+                text_color = (255, 255, 255)
+            cv2.rectangle(frame, (xmin,ymin), (xmax,ymax), color, 2)
+            s_conf = f'{conf:.3f}' # Format confidence to 3 decimal places
+            label = f'{classname} : {s_conf}'
+            labelSize, baseLine = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1) # Get font size
+            label_ymin = max(ymin, labelSize[1] + 10) # Make sure not to draw label too close to top of window
+            cv2.rectangle(frame, (xmin, label_ymin-labelSize[1]-10), (xmin+labelSize[0], label_ymin+baseLine-10), color, cv2.FILLED) # Draw white box to put label text in
+            cv2.putText(frame, label, (xmin, label_ymin-7), cv2.FONT_HERSHEY_SIMPLEX, 0.5, text_color, 1) # Draw label text
+            # draw ignore areas if specified
+            for area in ignore_areas:
+                cv2.rectangle(frame, (area[0], area[1]), (area[2], area[3]), (0,0,255), 2)
+                cv2.putText(frame, 'Ignore Area', (area[0], area[1]-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,255), 1)
 
-        # Basic example: count the number of objects in the image
-        object_count = object_count + 1
-    
-    # Display detection results
-    cv2.putText(frame, f'Number of objects: {object_count}', (10,resH - 10), cv2.FONT_HERSHEY_SIMPLEX, .7, (0,255,255), 2) # Draw total number of detected objects
-    cv2.imshow('YOLO detection results',frame) # Display image
+    if show_res:
+        # Display detection results
+        cv2.putText(frame, f'Number of objects: {object_count}', (10,resH - 10), cv2.FONT_HERSHEY_SIMPLEX, .7, (0,255,255), 2) # Draw total number of detected objects
+        cv2.imshow('YOLO detection results',frame) # Display image
 
     # Get user input
     key = cv2.waitKey()
