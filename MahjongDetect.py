@@ -48,8 +48,8 @@ ignore_areas = args.ignore
 # validate the ignore area values
 for area in ignore_areas:
     if len(area) != 4:
-        print('ERROR: Ignore area must be specified as x1 y1 x2 y2.')
-        sys.exit(0)
+        # delete the area if it is not a valid ignore area
+        ignore_areas.remove(area)
     if area[0] >= area[2] or area[1] >= area[3]:
         print('ERROR: Invalid ignore area coordinates specified. Please try again.')
         sys.exit(0)
@@ -123,6 +123,8 @@ while True:
     # Resize frame to desired display resolution
     if resize == True:
         frame = cv2.resize(frame,(resW,resH))
+    else:
+        resW, resH = frame.shape[1], frame.shape[0]
 
     # Check if ROI is specified, if so, crop the frame to the ROI
     if roi_x1 >= 0 and roi_y1 >= 0 and roi_x2 >= 0 and roi_y2 >= 0:
@@ -130,16 +132,10 @@ while True:
         if roi_x1 >= roi_x2 or roi_y1 >= roi_y2:
             print('ERROR: Invalid ROI coordinates specified. Please try again.')
             sys.exit(0)
-            
-        if resize:
-            sizeW = resW
-            sizeH = resH
-        else:
-            sizeW = frame.shape[1]
-            sizeH = frame.shape[0]
-        if sizeW <= 0 or sizeH <= 0:
-                print('ERROR: Invalid image size. Please check the input image.')
-                sys.exit(0)
+
+        if resW <= 0 or resH <= 0:
+            print('ERROR: Invalid image size. Please check the input image.')
+            sys.exit(0)
 
         # Crop the frame to the specified ROI
         frame = frame[roi_y1:roi_y2, roi_x1:roi_x2]
@@ -164,7 +160,10 @@ while True:
         xyxy_tensor = detections[i].xyxy.cpu() # Detections in Tensor format in CPU memory
         xyxy = xyxy_tensor.numpy().squeeze() # Convert tensors to Numpy array
         xmin, ymin, xmax, ymax = xyxy.astype(int) # Extract individual coordinates and convert to int
-        
+
+        if not user_res:
+            resW, resH = frame.shape[1], frame.shape[0] # Default to source resolution
+
         # Get bounding box confidence
         conf = detections[i].conf.item()
         if conf < float(min_threshold) and not show_all:
@@ -187,6 +186,7 @@ while True:
 
         # print all detections
         # print(f'Detection {i}: Class: {classname}, Confidence: {conf:.2f}, BBox: ({xmin}, {ymin}), ({xmax}, {ymax})')
+        print(f'Class: {classname}, BBox: ({xmin}, {ymin}), ({xmax}, {ymax})')
 
         if show_res:
             # draw label with class name and confidence in 3 decimal places
