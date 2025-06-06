@@ -9,7 +9,6 @@ import numpy as np
 from ultralytics import YOLO
 
 # Define and parse user input arguments
-
 parser = argparse.ArgumentParser()
 parser.add_argument('--model', help='Path to YOLO model file (example: "runs/detect/train/weights/best.pt")',
                     required=True)
@@ -186,7 +185,7 @@ while True:
 
         # print all detections
         # print(f'Detection {i}: Class: {classname}, Confidence: {conf:.2f}, BBox: ({xmin}, {ymin}), ({xmax}, {ymax})')
-        print(f'Class: {classname}, BBox: ({xmin}, {ymin}), ({xmax}, {ymax})')
+        print(f'BBox: ({xmin}, {ymin}), ({xmax}, {ymax}), Class: {classname}')
 
         if show_res:
             # draw label with class name and confidence in 3 decimal places
