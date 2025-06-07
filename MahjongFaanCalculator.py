@@ -160,14 +160,19 @@ for match in matches:
 # Sort the detections by x position
 detections.sort(key=lambda x: x['bbox'][0])
 
+#################################################################################################################
+# prepare for data extraction
+#################################################################################################################
+
 detected_tiles = [0] * 34   # non-flower tiles
 detected_flowers = [0] * 8
 detected_dragon = False
 detected_dragon_set = [0] * 2   # pong / kong 
 detected_wind = False
 detected_winds_set = [0] * 2    # pong / kong 
+words_only = True
 melds = [0] * (len(Meld) + 1)
-common_eye = -1  # -1: not detected, 0: not common eye, 1: common eye
+eye_type = -1  # -1: not detected, 0: common eye, 1: orphan eye, 2: dragon eye, 3: wind eye
 orphan = True
 one_suit = True
 last_suit = -1
@@ -175,6 +180,7 @@ odd_flowers = 0
 even_flowers = 0
 nice_flowers = 0
 cool_wind = 0   
+door_free = False # in test
 
 # extract the melds from the detected tiles
 # dont consider the flowers in this step
@@ -195,7 +201,8 @@ for i in range(detections.__len__()):
         if flower_index == seat or flower_index / 2 == seat:
             nice_flowers += 1
         continue
-    elif class_name in Tile.__members__:
+
+    if class_name in Tile.__members__:
         tile = Tile[class_name].value
         detected_tiles[tile] += 1
     else:
@@ -211,9 +218,12 @@ for i in range(detections.__len__()):
             if last_suit != tile / 10:
                 one_suit = False
 
-    # check if its orphan tile
-    if orphan and not is_dragon(tile) and not is_wind(tile) and tile % 10 != 1 and tile % 10 != 9 :
-        orphan = False
+    # check if its word
+    if tile < 30:
+        words_only = False
+        # check if its orphan tile
+        if orphan and tile % 10 != 1 and tile % 10 != 9:
+            orphan = False
 
     if is_wind(tile):
         detected_wind = True
@@ -257,76 +267,146 @@ for i in range(detections.__len__()):
             print("Error: saved_tiles didn't match any melds, but has", saved_tiles.__len__(), "tiles left:", saved_tiles)
             sys.exit(1)
 
-#should have 2 tiles left in saved_tiles
+#should have 2 tiles left in saved_tiles, but maybe its 13 orphan or other special case
 if saved_tiles.__len__() == 2:
+    # eyes must be identical
     if saved_tiles[0] != saved_tiles[1]:
         print("Error: saved_tiles should have 2 identical tiles left, but has", saved_tiles)
+        sys.exit(1)
 
     # if its dragon or wind, it is not common eye
-    if is_dragon(saved_tiles[0]) or is_wind(saved_tiles[0]) or is_dragon(saved_tiles[1]) or is_wind(saved_tiles[1]):
-        common_eye = 0
+    if is_dragon(saved_tiles[0]) :
+        eye_type = 2
+    elif is_wind(saved_tiles[0]):
+        eye_type = 3
+    elif saved_tiles[0] % 10 == 1 or saved_tiles[0] % 10 == 9:
+        eye_type = 1
     else:
-        common_eye = 1
-else:
-    print("Error: saved_tiles should have 2 tiles left, but has", saved_tiles.__len__())
+        eye_type = 0
+# else:
+    # print("Error: saved_tiles should have 2 tiles left, but has", saved_tiles.__len__())
 
+#################################################################################################################
 # Main calculation
+#################################################################################################################
 Faan = 0
 
-# calculate flower first
+# flower first
 if odd_flowers + even_flowers == 0:
     Faan += 1
+elif odd_flowers + even_flowers == 7:
+    Faan == 3
+    print("Success: Calculation completed with Seven Flowers.")
+    print("Faan:", Faan)
+    sys.exit(0)
+elif odd_flowers + even_flowers == 8:
+    Faan == 8
+    print("Success: Calculation completed with All Flowers.")
+    print("Faan:", Faan)
+    sys.exit(0)
 elif odd_flowers == 4 or even_flowers == 4:
     Faan += 2
 
-# calculate wind
-Faan += cool_wind
+# special case
+if saved_tiles.__len__() != 2:
+    # Thirteen Orphans Pog champ
+    total_orphans = 0
+    total_orphans += detected_tiles[1] + detected_tiles[9] + \
+                    detected_tiles[11] + detected_tiles[19] + \
+                    detected_tiles[21] + detected_tiles[29] + \
+                    detected_tiles[31] + detected_tiles[32] + detected_tiles[33] + \
+                    detected_tiles[41] + detected_tiles[42] + detected_tiles[43] + detected_tiles[44]
 
-if orphan:
-    if one_suit:
-        Faan += 10
-        print("Success: Calculation completed with Orphan and One Suit.")
+    # for i in range(0, 3):
+    #     total_orphans += detected_tiles[10 * i + 1]
+    #     total_orphans += detected_tiles[10 * i + 9]
+    #     total_orphans += detected_tiles[30 + i]
+    #     total_orphans += detected_tiles[40 + i]
+    # total_orphans += detected_tiles[44]
+    
+    if total_orphans == 14:
+        Faan = 13
+        print("Success: Calculation completed with Thirteen Orphans.")
         print("Faan:", Faan)
         sys.exit(0)
-    elif detected_dragon or detected_wind:
-        Faan += 1
-
-    if saved_tiles.__len__() == 14:
-        # Thirteen Orphans Pog champ
-        total_orphans = 0
-        total_orphans += detected_tiles[1] + detected_tiles[9] + \
-                        detected_tiles[11] + detected_tiles[19] + \
-                        detected_tiles[21] + detected_tiles[29] + \
-                        detected_tiles[31] + detected_tiles[32] + detected_tiles[33] + \
-                        detected_tiles[41] + detected_tiles[42] + detected_tiles[43] + detected_tiles[44]
-
-        # for i in range(0, 3):
-        #     total_orphans += detected_tiles[10 * i + 1]
-        #     total_orphans += detected_tiles[10 * i + 9]
-        #     total_orphans += detected_tiles[30 + i]
-        #     total_orphans += detected_tiles[40 + i]
-        # total_orphans += detected_tiles[44]
-        
-        if total_orphans == 14:
-            Faan = 13
-            print("Success: Calculation completed with Thirteen Orphans.")
-            print("Faan:", Faan)
-            sys.exit(0)
-
     else:
          print("Error: invalid number of tiles :", saved_tiles.__len__())
+if words_only:
+    Faan == 10
+    print("Success: Calculation completed with words only.")
+    print("Faan:", Faan)
+    sys.exit(0)
+if orphan:
+    if eye_type == 3 and check_triplets(melds) and not detected_dragon and not detected_wind:
+        Faan == 10
+        print("Success: Calculation completed with all orphan.")
+        print("Faan:", Faan)
+        sys.exit(0)
+    if one_suit and door_free and detected_tiles[last_suit * 10 + 1] >= 3 and detected_tiles[last_suit * 10 + 9] >= 3:
+        owned_tile = True
+        for i in range(2 , 9):
+            if detected_tiles[last_suit * 10 + i] == 0:
+                owned_tile == False
+                break
+        if owned_tile:
+            Faan == 10
+            print("Success: Calculation completed with Nine Gates.")
+            print("Faan:", Faan)
+            sys.exit(0)
+if melds[1] == 4:
+    Faan == 13
+    print("Success: Calculation completed with All Kongs.")
+    print("Faan:", Faan)
+    sys.exit(0)
+# end special case
 
+# wind
+Faan += cool_wind
+
+# orphan
+if orphan and eye_type == 3 and (detected_dragon or detected_wind ):
+    Faan += 1
+
+# suit
 if one_suit:
-    if detected_dragon or detected_wind or common_eye == 0:
+    if detected_dragon or detected_wind or eye_type == 2 or eye_type == 3:
         Faan += 3
     else:
         Faan += 7
 
+# dragon / wind set
+if detected_dragon_set[0] + detected_dragon_set[1] >= 2:
+    if eye_type == 2:
+        Faan += 5
+    else:
+        Faan += 8
 
+if detected_winds_set[0] + detected_winds_set[1] >= 2:
+    if eye_type == 3:
+        Faan += 6
+    else:
+        Faan == 13
+        print("Success: Calculation completed with Great Winds.")
+        print("Faan:", Faan)
+        sys.exit(0)
+
+# door free
+if door_free:
+    Faan += 1
+
+# melds
 if check_ping(melds):
     Faan += 1
 elif check_triplets(melds):
-    Faan += 3
+    if door_free:
+        Faan += 4   # 1 Faan for door free is calculated before
+    else:
+        Faan += 3
+
+if Faan < 1:
+    print("Error: Invaild Faan calculated")
+    print("Faan:", Faan)
+    sys.exit(1)
 
 print("Success: Calculation completed")
 print("Faan:", Faan)
