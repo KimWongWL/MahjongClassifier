@@ -51,7 +51,7 @@ for area in ignore_areas:
         ignore_areas.remove(area)
     if area[0] >= area[2] or area[1] >= area[3]:
         print('ERROR: Invalid ignore area coordinates specified. Please try again.')
-        sys.exit(0)
+        sys.exit(1)
 
 # sort the ignore areas by x1, y1
 if len(ignore_areas) > 2:
@@ -60,7 +60,7 @@ if len(ignore_areas) > 2:
 # Check if model file exists and is valid
 if (not os.path.exists(model_path)):
     print('ERROR: Model path is invalid or model was not found. Make sure the model filename was entered correctly.')
-    sys.exit(0)
+    sys.exit(1)
 
 # Load the model into memory and get labemap
 model = YOLO(model_path, task='detect')
@@ -77,10 +77,10 @@ elif os.path.isfile(img_source):
         source_type = 'image'
     else:
         print(f'ERROR: File extension {ext} is not supported.')
-        sys.exit(0)
+        sys.exit(1)
 else:
     print(f'ERROR: Input {img_source} is invalid. Please try again.')
-    sys.exit(0)
+    sys.exit(1)
 
 # Parse user-specified display resolution
 resize = False
@@ -130,11 +130,11 @@ while True:
         # return error if ROI coordinates are invalid
         if roi_x1 >= roi_x2 or roi_y1 >= roi_y2:
             print('ERROR: Invalid ROI coordinates specified. Please try again.')
-            sys.exit(0)
+            sys.exit(1)
 
         if resW <= 0 or resH <= 0:
             print('ERROR: Invalid image size. Please check the input image.')
-            sys.exit(0)
+            sys.exit(1)
 
         # Crop the frame to the specified ROI
         frame = frame[roi_y1:roi_y2, roi_x1:roi_x2]
@@ -223,3 +223,4 @@ while True:
 
 # Clean up
 cv2.destroyAllWindows()
+sys.exit(0)

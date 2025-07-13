@@ -2,78 +2,9 @@ import subprocess
 import argparse
 import sys
 import re
-from enum import Enum
-
-class Tile(Enum):
-    b1 = 1
-    b2 = 2
-    b3 = 3
-    b4 = 4
-    b5 = 5
-    b6 = 6
-    b7 = 7
-    b8 = 8
-    b9 = 9
-    c1 = 11
-    c2 = 12
-    c3 = 13
-    c4 = 14
-    c5 = 15
-    c6 = 16
-    c7 = 17
-    c8 = 18
-    c9 = 19
-    d1 = 21
-    d2 = 22
-    d3 = 23
-    d4 = 24
-    d5 = 25
-    d6 = 26
-    d7 = 27
-    d8 = 28
-    d9 = 29
-    dr = 31
-    dg = 32
-    dw = 33
-    we = 41
-    ws = 42
-    ww = 43
-    wn = 44
-
-class Flower(Enum):
-    f1 = 1
-    f1_s = 1
-    f2 = 3
-    f2_s = 3
-    f3 = 5
-    f3_s = 5
-    f4 = 7
-    f4_s = 7
-    s1 = 2
-    s1_s = 2
-    s2 = 4
-    s2_s = 4
-    s3 = 6
-    s3_s = 6
-    s4 = 8
-    s4_s = 8
-
-class Meld(Enum):
-    CHOW = 1
-    PONG = 2
-    KONG = 3
+import MahjongTile as Mahjong
 
 # calculation functions
-def check_triplets(melds):
-    if(melds[Meld.CHOW] >= 1):
-        return  False
-    return True
-
-def check_ping(melds):
-    if melds[Meld.PONG] >= 1 or melds[Meld.KONG] >= 1:
-        return False
-    return True
-
 def is_dragon(tile):
     return tile > 30 and tile < 34
 
@@ -120,7 +51,7 @@ ignore_args = []
 if args.ignore:
     ignore_args = ["--ignore"] + [str(coord) for area in ignore_areas for coord in area]
 
-debug = True
+debug = False
 debug_args = []
 if debug:
     debug_args = ["--showRes", "True", "--resolution", "1280x1280"]
@@ -157,21 +88,22 @@ for match in matches:
     }
     detections.append(detection)
 
-# Sort the detections by x position
-detections.sort(key=lambda x: x['bbox'][0])
+# Sort the detections by x position then y position
+if detections:
+    detections.sort(key=lambda x: (x['bbox'][0], x['bbox'][1]))
 
 #################################################################################################################
 # prepare for data extraction
 #################################################################################################################
 
-detected_tiles = [0] * 34   # non-flower tiles
-detected_flowers = [0] * 8
+detected_tiles = [0] * 45   # non-flower tiles
+detected_flowers = [0] * (8 + 1)
 detected_dragon = False
 detected_dragon_set = [0] * 2   # pong / kong 
 detected_wind = False
 detected_winds_set = [0] * 2    # pong / kong 
 words_only = True
-melds = [0] * (len(Meld) + 1)
+melds = [0] * (len(Mahjong.Meld) + 1)
 eye_type = -1  # -1: not detected, 0: common eye, 1: orphan eye, 2: dragon eye, 3: wind eye
 orphan = True
 one_suit = True
@@ -189,8 +121,8 @@ for i in range(detections.__len__()):
     # get the detection
     detection = detections[i]
     class_name = detection['class']
-    if class_name in Flower.__members__:
-        flower_index = Flower[class_name].value
+    if class_name in Mahjong.Flower.__members__:
+        flower_index = Mahjong.Flower[class_name].value
         detected_flowers[flower_index] += 1
         # flower are seperated into odd and even
         if flower_index % 2 == 1:
@@ -202,8 +134,8 @@ for i in range(detections.__len__()):
             nice_flowers += 1
         continue
 
-    if class_name in Tile.__members__:
-        tile = Tile[class_name].value
+    if class_name in Mahjong.Tile.__members__:
+        tile = Mahjong.Tile[class_name].value
         detected_tiles[tile] += 1
     else:
         print(f"Error: Detected unknown tile class '{class_name}'")
@@ -234,18 +166,39 @@ for i in range(detections.__len__()):
 
     # check for melds when the len of saved_tiles is 3 or more
     if saved_tiles.__len__() == 3:
+
         # check for chow melds
-        if saved_tiles[-1] - saved_tiles[-2] == 1 and saved_tiles[-2] - saved_tiles[-3] == 1:
-            melds[Meld.CHOW.value] += 1
+        if saved_tiles[0] < 30 and \
+           saved_tiles[-1] - saved_tiles[-2] == 1 and saved_tiles[-2] - saved_tiles[-3] == 1:
+            melds[Mahjong.Meld.CHOW.value] += 1
             saved_tiles = []
             orphan = False
             continue
-        
+        # check for eye
+        if saved_tiles[0] == saved_tiles[1] and saved_tiles[1] != saved_tiles[2]:
+            # cant have 2 eyes
+            if eye_type != -1:
+                print("Error: eye already detected, but saved_tiles has 3 tiles left:", saved_tiles)
+                sys.exit(1)
+
+            # if its dragon or wind, it is not common eye
+            if is_dragon(saved_tiles[0]) :
+                eye_type = 2
+            elif is_wind(saved_tiles[0]):
+                eye_type = 3
+            elif saved_tiles[0] % 10 == 1 or saved_tiles[0] % 10 == 9:
+                eye_type = 1
+            else:
+                eye_type = 0
+
+            saved_tiles = saved_tiles[2:]
+            continue
+    
     if saved_tiles.__len__() > 3:
 
         # check for kong melds
         if saved_tiles[0] == saved_tiles[1] == saved_tiles[2] == saved_tiles[3]:
-            melds[Meld.KONG.value] += 1
+            melds[Mahjong.Meld.KONG.value] += 1
             saved_tiles = []
             if is_dragon(saved_tiles[0]):
                 detected_dragon_set[1] += 1
@@ -255,7 +208,7 @@ for i in range(detections.__len__()):
                 detected_wind = True
         # check for pong melds
         elif saved_tiles[0] == saved_tiles[1] == saved_tiles[2]:
-            melds[Meld.PONG.value] += 1
+            melds[Mahjong.Meld.PONG.value] += 1
             saved_tiles = saved_tiles[3:]
             if is_dragon(saved_tiles[0]):
                 detected_dragon_set[0] += 1
@@ -267,25 +220,6 @@ for i in range(detections.__len__()):
             print("Error: saved_tiles didn't match any melds, but has", saved_tiles.__len__(), "tiles left:", saved_tiles)
             sys.exit(1)
 
-#should have 2 tiles left in saved_tiles, but maybe its 13 orphan or other special case
-if saved_tiles.__len__() == 2:
-    # eyes must be identical
-    if saved_tiles[0] != saved_tiles[1]:
-        print("Error: saved_tiles should have 2 identical tiles left, but has", saved_tiles)
-        sys.exit(1)
-
-    # if its dragon or wind, it is not common eye
-    if is_dragon(saved_tiles[0]) :
-        eye_type = 2
-    elif is_wind(saved_tiles[0]):
-        eye_type = 3
-    elif saved_tiles[0] % 10 == 1 or saved_tiles[0] % 10 == 9:
-        eye_type = 1
-    else:
-        eye_type = 0
-# else:
-    # print("Error: saved_tiles should have 2 tiles left, but has", saved_tiles.__len__())
-
 #################################################################################################################
 # Main calculation
 #################################################################################################################
@@ -295,12 +229,12 @@ Faan = 0
 if odd_flowers + even_flowers == 0:
     Faan += 1
 elif odd_flowers + even_flowers == 7:
-    Faan == 3
+    Faan = 3
     print("Success: Calculation completed with Seven Flowers.")
     print("Faan:", Faan)
     sys.exit(0)
 elif odd_flowers + even_flowers == 8:
-    Faan == 8
+    Faan = 8
     print("Success: Calculation completed with All Flowers.")
     print("Faan:", Faan)
     sys.exit(0)
@@ -308,37 +242,47 @@ elif odd_flowers == 4 or even_flowers == 4:
     Faan += 2
 
 # special case
-if saved_tiles.__len__() != 2:
+if orphan:
     # Thirteen Orphans Pog champ
     total_orphans = 0
-    total_orphans += detected_tiles[1] + detected_tiles[9] + \
-                    detected_tiles[11] + detected_tiles[19] + \
-                    detected_tiles[21] + detected_tiles[29] + \
-                    detected_tiles[31] + detected_tiles[32] + detected_tiles[33] + \
-                    detected_tiles[41] + detected_tiles[42] + detected_tiles[43] + detected_tiles[44]
+    have_all_orphans = True
+    # total_orphans += detected_tiles[1] + detected_tiles[9] + \
+    #                 detected_tiles[11] + detected_tiles[19] + \
+    #                 detected_tiles[21] + detected_tiles[29] + \
+    #                 detected_tiles[31] + detected_tiles[32] + detected_tiles[33] + \
+    #                 detected_tiles[41] + detected_tiles[42] + detected_tiles[43] + detected_tiles[44]
 
-    # for i in range(0, 3):
-    #     total_orphans += detected_tiles[10 * i + 1]
-    #     total_orphans += detected_tiles[10 * i + 9]
-    #     total_orphans += detected_tiles[30 + i]
-    #     total_orphans += detected_tiles[40 + i]
-    # total_orphans += detected_tiles[44]
+    for i in range(0, 3):
+        if(detected_tiles[10 * i + 1] < 1):
+            have_all_orphans = False
+            break
+        if(detected_tiles[10 * i + 9] < 1):
+            have_all_orphans = False
+            break
+        if(detected_tiles[30 + i + 1] < 1):
+            have_all_orphans = False
+            break
+        if(detected_tiles[40 + i + 1] < 1):
+            have_all_orphans = False
+            break
+
+        total_orphans += detected_tiles[10 * i + 1]
+        total_orphans += detected_tiles[10 * i + 9]
+        total_orphans += detected_tiles[30 + i + 1]
+        total_orphans += detected_tiles[40 + i + 1]
+
+    total_orphans += detected_tiles[44]
+    if(detected_tiles[44] < 1):
+        have_all_orphans = False
     
-    if total_orphans == 14:
+    if total_orphans == 14 and have_all_orphans:
         Faan = 13
         print("Success: Calculation completed with Thirteen Orphans.")
         print("Faan:", Faan)
         sys.exit(0)
-    else:
-         print("Error: invalid number of tiles :", saved_tiles.__len__())
-if words_only:
-    Faan == 10
-    print("Success: Calculation completed with words only.")
-    print("Faan:", Faan)
-    sys.exit(0)
-if orphan:
-    if eye_type == 3 and check_triplets(melds) and not detected_dragon and not detected_wind:
-        Faan == 10
+
+    if eye_type == 1 and melds[Mahjong.Meld.CHOW.value] == 0 and not detected_dragon and not detected_wind:
+        Faan = 10
         print("Success: Calculation completed with all orphan.")
         print("Faan:", Faan)
         sys.exit(0)
@@ -346,25 +290,29 @@ if orphan:
         owned_tile = True
         for i in range(2 , 9):
             if detected_tiles[last_suit * 10 + i] == 0:
-                owned_tile == False
+                owned_tile = False
                 break
         if owned_tile:
-            Faan == 10
+            Faan = 10
             print("Success: Calculation completed with Nine Gates.")
             print("Faan:", Faan)
             sys.exit(0)
-if melds[1] == 4:
-    Faan == 13
+
+if words_only:
+    Faan = 10
+    print("Success: Calculation completed with words only.")
+    print("Faan:", Faan)
+    sys.exit(0)
+
+if melds[Mahjong.Meld.KONG.value] == 4:
+    Faan = 13
     print("Success: Calculation completed with All Kongs.")
     print("Faan:", Faan)
     sys.exit(0)
 # end special case
 
-# wind
-Faan += cool_wind
-
 # orphan
-if orphan and eye_type == 3 and (detected_dragon or detected_wind ):
+if orphan and eye_type == 1 and (detected_dragon or detected_wind):
     Faan += 1
 
 # suit
@@ -375,29 +323,32 @@ if one_suit:
         Faan += 7
 
 # dragon / wind set
-if detected_dragon_set[0] + detected_dragon_set[1] >= 2:
-    if eye_type == 2:
-        Faan += 5
-    else:
+if detected_dragon_set[0] + detected_dragon_set[1] == 3:
         Faan += 8
+if detected_dragon_set[0] + detected_dragon_set[1] == 2 and eye_type == 2:
+        Faan += 5
 
-if detected_winds_set[0] + detected_winds_set[1] >= 2:
-    if eye_type == 3:
-        Faan += 6
-    else:
-        Faan == 13
+if detected_winds_set[0] + detected_winds_set[1] == 4:
+        Faan = 13
         print("Success: Calculation completed with Great Winds.")
         print("Faan:", Faan)
         sys.exit(0)
+if detected_winds_set[0] + detected_winds_set[1] == 3 and eye_type == 3:
+        Faan += 6
 
 # door free
 if door_free:
     Faan += 1
+# wind
+Faan += cool_wind
+# dragon
+if detected_dragon:
+    Faan += detected_dragon_set[0] + detected_dragon_set[1]
 
 # melds
-if check_ping(melds):
+if melds[Mahjong.Meld.PONG.value] == 0 and melds[Mahjong.Meld.KONG.value] == 0: # common
     Faan += 1
-elif check_triplets(melds):
+elif melds[Mahjong.Meld.CHOW.value] == 0:
     if door_free:
         Faan += 4   # 1 Faan for door free is calculated before
     else:
