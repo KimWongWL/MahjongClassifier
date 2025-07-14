@@ -12,6 +12,8 @@ def is_wind(tile):
     return tile > 40 and tile < 45
 
 
+
+
 # Define and parse user input arguments
 parser = argparse.ArgumentParser()
 parser.add_argument('--source', help='The image source for mahjong detection, can be image file ("test.jpg"), image folder ("test_dir")', 
@@ -88,9 +90,39 @@ for match in matches:
     }
     detections.append(detection)
 
-# Sort the detections by x position then y position
+if not detections:
+    print("Error: No tiles detected.")
+    sys.exit(0)
+
+# Sort the detections by x position 
 if detections:
-    detections.sort(key=lambda x: (x['bbox'][0], x['bbox'][1]))
+    detections.sort(key=lambda x: (x['bbox'][0]))
+
+# check if there is any weird y position difference
+tile_height = detections[0]['bbox'][3] - detections[0]['bbox'][1]
+for i in range(0, len(detections) - 1):
+    y_curr = detections[i]['bbox'][1]
+    y_next = detections[i + 1]['bbox'][1]
+    if abs(y_curr - y_next) > tile_height * 0.75:
+        # skip flower and season
+        if detections[i]['class'].first() == 'f' or detections[i]['class'].first() == 's':
+            continue
+        # check if there is a tile at right instead
+        for j in range(2, min(4, len(detections) - i - 1 - 2)):
+            if abs(detections[i + j]['bbox'][1] - y_curr) < tile_height * 0.75 and \
+                detections[i + j]['class'].first() == detections[i]['class'].first():
+                print("need swap\n")
+                # put j tiles after i to i + j
+                # if i = 2, j = 2, 3th and 4th -> 5th and 6th | ori 5th and 6th -> 3th and 4th
+                for k in range(i, i + j + 1):
+                    print(f"Tile {k}: {detections[k]['class']} at {detections[k]['bbox']}")
+                # swap the tiles
+                detections[i + 1:i + 1 + j], detections[i + j + 1:i + j + 1 + j] = detections[i + j + 1:i + j + 1 + j], detections[i + 1:i + 1 + j]
+                # print all detection after swap
+                for k in range(i, i + j + 1):
+                    print(f"Tile {k}: {detections[k]['class']} at {detections[k]['bbox']}")
+
+                i = i + j + j
 
 #################################################################################################################
 # prepare for data extraction
