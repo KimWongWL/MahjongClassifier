@@ -11,8 +11,16 @@ def is_dragon(tile):
 def is_wind(tile):
     return tile > 40 and tile < 45
 
+def end_program(code, showMsg = False, msg = "", Faan = 0, name = ""):
+    if showMsg:
+        print(msg)
+    if code == 0:
+        print("Success: Calculation completed with", name)
+        print("Faan:", Faan)
+    sys.exit(code)
 
-
+debug_msg = False
+debug_str = "\nDebug:\n"
 
 # Define and parse user input arguments
 parser = argparse.ArgumentParser()
@@ -53,14 +61,14 @@ ignore_args = []
 if args.ignore:
     ignore_args = ["--ignore"] + [str(coord) for area in ignore_areas for coord in area]
 
-debug = False
-debug_args = []
-if debug:
-    debug_args = ["--showRes", "True", "--resolution", "1280x1280"]
+debug_detect = False
+debug_detect_args = []
+if debug_detect:
+    debug_detect_args = ["--showRes", "True", "--resolution", "1280x1280"]
 
 # Call mahjong detect script
 result = subprocess.run(
-    ["python", "MahjongDetect.py", "--model", "Model/5/my_model.pt", "--source", img_source, "--threshold", min_threshold] + ROI_args + debug_args + ignore_args,
+    ["python", "MahjongDetect.py", "--model", "Model/5/my_model.pt", "--source", img_source, "--threshold", min_threshold] + ROI_args + debug_detect_args + ignore_args,
     capture_output=True,
     text=True
 )
@@ -74,7 +82,7 @@ result = subprocess.run(
 if result.returncode != 0 or "ERROR" in result.stdout:
     print("Error occurred during detection:")
     print(result.stdout)
-    sys.exit(0)
+    end_program(1, debug_msg, debug_str)
 
 # Parse the output to pair array
 pattern = r'BBox: \((\d+), (\d+)\), \((\d+), (\d+)\), Class: (\w+)'
@@ -92,7 +100,7 @@ for match in matches:
 
 if not detections:
     print("Error: No tiles detected.")
-    sys.exit(0)
+    end_program(1, debug_msg, debug_str)
 
 # Sort the detections by x position 
 if detections:
@@ -105,24 +113,29 @@ for i in range(0, len(detections) - 1):
     y_next = detections[i + 1]['bbox'][1]
     if abs(y_curr - y_next) > tile_height * 0.75:
         # skip flower and season
-        if detections[i]['class'].first() == 'f' or detections[i]['class'].first() == 's':
+        if detections[i]['class'][0] == 'f' or detections[i]['class'][0] == 's' or \
+            detections[i + 1]['class'][0] == 'f' or detections[i + 1]['class'][0] == 's':
             continue
         # check if there is a tile at right instead
         for j in range(2, min(4, len(detections) - i - 1 - 2)):
             if abs(detections[i + j]['bbox'][1] - y_curr) < tile_height * 0.75 and \
-                detections[i + j]['class'].first() == detections[i]['class'].first():
-                print("need swap\n")
+                detections[i + j]['class'][0] == detections[i]['class'][0]:
+                number_to_swap = j - 1
                 # put j tiles after i to i + j
                 # if i = 2, j = 2, 3th and 4th -> 5th and 6th | ori 5th and 6th -> 3th and 4th
-                for k in range(i, i + j + 1):
-                    print(f"Tile {k}: {detections[k]['class']} at {detections[k]['bbox']}")
-                # swap the tiles
-                detections[i + 1:i + 1 + j], detections[i + j + 1:i + j + 1 + j] = detections[i + j + 1:i + j + 1 + j], detections[i + 1:i + 1 + j]
-                # print all detection after swap
-                for k in range(i, i + j + 1):
-                    print(f"Tile {k}: {detections[k]['class']} at {detections[k]['bbox']}")
+                if debug_msg:
+                    for k in range(0 , j + number_to_swap):
+                        print(f"Tile {i + k}: {detections[i + k]['class']} at {detections[i + k]['bbox']}")
 
-                i = i + j + j
+                # swap the tiles
+                detections[i + 1:i + j], detections[i + j:i + j + number_to_swap] = detections[i + j:i + j + number_to_swap], detections[i + 1:i + j]
+
+                if debug_msg:
+                    for k in range(0 , j + number_to_swap):
+                        print(f"Tile {i + k}: {detections[i + k]['class']} at {detections[i + k ]['bbox']}")
+                    print("\n")
+                i = i + j + number_to_swap
+                break
 
 #################################################################################################################
 # prepare for data extraction
@@ -145,6 +158,7 @@ even_flowers = 0
 nice_flowers = 0
 cool_wind = 0   
 door_free = False # in test
+result_name = ""
 
 # extract the melds from the detected tiles
 # dont consider the flowers in this step
@@ -171,7 +185,7 @@ for i in range(detections.__len__()):
         detected_tiles[tile] += 1
     else:
         print(f"Error: Detected unknown tile class '{class_name}'")
-        sys.exit(1)
+        end_program(1, debug_msg, debug_str)
     saved_tiles.append(tile)
 
     # check if its one suit
@@ -211,7 +225,7 @@ for i in range(detections.__len__()):
             # cant have 2 eyes
             if eye_type != -1:
                 print("Error: eye already detected, but saved_tiles has 3 tiles left:", saved_tiles)
-                sys.exit(1)
+                end_program(1, debug_msg, debug_str)
 
             # if its dragon or wind, it is not common eye
             if is_dragon(saved_tiles[0]) :
@@ -241,37 +255,74 @@ for i in range(detections.__len__()):
         # check for pong melds
         elif saved_tiles[0] == saved_tiles[1] == saved_tiles[2]:
             melds[Mahjong.Meld.PONG.value] += 1
-            saved_tiles = saved_tiles[3:]
             if is_dragon(saved_tiles[0]):
                 detected_dragon_set[0] += 1
                 detected_dragon = True
             elif is_wind(saved_tiles[0]):
                 detected_winds_set[0] += 1
                 detected_wind = True
+            saved_tiles = saved_tiles[3:]
         elif not orphan:
             print("Error: saved_tiles didn't match any melds, but has", saved_tiles.__len__(), "tiles left:", saved_tiles)
-            sys.exit(1)
+            end_program(1, debug_msg, debug_str)
+
+# check if there is saved tiles left
+if saved_tiles.__len__() > 0:
+    if saved_tiles.__len__() == 2 and saved_tiles[0] == saved_tiles[1]:
+            # cant have 2 eyes
+            if eye_type != -1:
+                print("Error: eye already detected, but saved_tiles has 2 tiles left:", saved_tiles)
+                end_program(1, debug_msg, debug_str)
+
+            # if its dragon or wind, it is not common eye
+            if is_dragon(saved_tiles[0]) :
+                eye_type = 2
+            elif is_wind(saved_tiles[0]):
+                eye_type = 3
+            elif saved_tiles[0] % 10 == 1 or saved_tiles[0] % 10 == 9:
+                eye_type = 1
+            else:
+                eye_type = 0
+    elif saved_tiles.__len__() == 3:
+        # check for pong melds
+        if saved_tiles[0] == saved_tiles[1] == saved_tiles[2]:
+            melds[Mahjong.Meld.PONG.value] += 1
+            if is_dragon(saved_tiles[0]):
+                detected_dragon_set[0] += 1
+                detected_dragon = True
+            elif is_wind(saved_tiles[0]):
+                detected_winds_set[0] += 1
+                detected_wind = True
+            saved_tiles = saved_tiles[3:]
+    elif not orphan:
+        print("Error: ", saved_tiles.__len__(), "tiles left:", saved_tiles)
+        end_program(1, debug_msg, debug_str)
 
 #################################################################################################################
 # Main calculation
 #################################################################################################################
 Faan = 0
 
+if debug_msg:
+    print("odd_flowers : ", odd_flowers)
+    print("even_flowers : ", even_flowers)
 # flower first
 if odd_flowers + even_flowers == 0:
     Faan += 1
+    debug_str += "No flowers, 1 Faan added.\n"
 elif odd_flowers + even_flowers == 7:
     Faan = 3
-    print("Success: Calculation completed with Seven Flowers.")
-    print("Faan:", Faan)
-    sys.exit(0)
+    debug_str += "Seven Flowers, = 3 Faan.\n"
+    result_name = "Seven Flowers"
+    end_program(0, debug_msg, debug_str, Faan, result_name)
 elif odd_flowers + even_flowers == 8:
     Faan = 8
-    print("Success: Calculation completed with All Flowers.")
-    print("Faan:", Faan)
-    sys.exit(0)
+    debug_str += "All Flowers, = 8 Faan.\n"
+    result_name = "All Flowers"
+    end_program(0, debug_msg, debug_str, Faan, result_name)
 elif odd_flowers == 4 or even_flowers == 4:
     Faan += 2
+    debug_str += "one suit Flowers, 2 Faan added.\n"
 
 # special case
 if orphan:
@@ -309,15 +360,15 @@ if orphan:
     
     if total_orphans == 14 and have_all_orphans:
         Faan = 13
-        print("Success: Calculation completed with Thirteen Orphans.")
-        print("Faan:", Faan)
-        sys.exit(0)
+        debug_str += "Thirteen Orphans, = 13 Faan.\n"
+        result_name = "Thirteen Orphans"
+        end_program(0, debug_msg, debug_str, Faan, result_name)
 
     if eye_type == 1 and melds[Mahjong.Meld.CHOW.value] == 0 and not detected_dragon and not detected_wind:
         Faan = 10
-        print("Success: Calculation completed with all orphan.")
-        print("Faan:", Faan)
-        sys.exit(0)
+        debug_str += "all orphan, = 10 Faan.\n"
+        result_name = "All Orphans"
+        end_program(0, debug_msg, debug_str, Faan, result_name)
     if one_suit and door_free and detected_tiles[last_suit * 10 + 1] >= 3 and detected_tiles[last_suit * 10 + 9] >= 3:
         owned_tile = True
         for i in range(2 , 9):
@@ -326,72 +377,90 @@ if orphan:
                 break
         if owned_tile:
             Faan = 10
-            print("Success: Calculation completed with Nine Gates.")
-            print("Faan:", Faan)
-            sys.exit(0)
+            debug_str += "Nine Gates, = 10 Faan.\n"
+            result_name = "Nine Gates"
+            end_program(0, debug_msg, debug_str, Faan, result_name)
 
 if words_only:
     Faan = 10
-    print("Success: Calculation completed with words only.")
-    print("Faan:", Faan)
-    sys.exit(0)
+    debug_str += "words only, = 10 Faan.\n"
+    result_name = "Words Only"
+    end_program(0, debug_msg, debug_str, Faan, result_name)
 
 if melds[Mahjong.Meld.KONG.value] == 4:
     Faan = 13
-    print("Success: Calculation completed with All Kongs.")
-    print("Faan:", Faan)
-    sys.exit(0)
+    debug_str += "All Kongs, = 13 Faan.\n"
+    result_name = "All Kongs"
+    end_program(0, debug_msg, debug_str, Faan, result_name)
 # end special case
 
 # orphan
 if orphan and eye_type == 1 and (detected_dragon or detected_wind):
     Faan += 1
+    debug_str += "orphans, 1 Faan Added.\n"
 
 # suit
 if one_suit:
     if detected_dragon or detected_wind or eye_type == 2 or eye_type == 3:
         Faan += 3
+        debug_str += "mixed suit, 3 Faan Added.\n"
+        result_name = "mixed suit"
     else:
         Faan += 7
+        debug_str += "one suit, 7 Faan Added.\n"
+        result_name = "one suit"
 
-# dragon / wind set
+# dragon
+if debug_msg:
+    print("detected_dragon_set[0] : ", detected_dragon_set[0])
+    print("detected_dragon_set[1] : ", detected_dragon_set[1])
+    print("eye_type : ", eye_type)
 if detected_dragon_set[0] + detected_dragon_set[1] == 3:
-        Faan += 8
-if detected_dragon_set[0] + detected_dragon_set[1] == 2 and eye_type == 2:
         Faan += 5
-
+        debug_str += "big dragon, 5 Faan Added.\n"
+        result_name = "big dragon"
+elif detected_dragon_set[0] + detected_dragon_set[1] == 2 and eye_type == 2:
+        Faan += 3
+        debug_str += "small dragon, 3 Faan Added.\n"
+        result_name = "small dragon"
+# wind set
 if detected_winds_set[0] + detected_winds_set[1] == 4:
         Faan = 13
-        print("Success: Calculation completed with Great Winds.")
-        print("Faan:", Faan)
-        sys.exit(0)
+        debug_str += "Great Winds, = 13 Faan.\n"
+        result_name = "Great Winds"
+        end_program(0, debug_msg, debug_str, Faan, result_name)
 if detected_winds_set[0] + detected_winds_set[1] == 3 and eye_type == 3:
         Faan += 6
+        debug_str += "small wind, 6 Faan Added.\n"
+        result_name = "small wind"
+# wind & dragon
+Faan += cool_wind
+debug_str += "winds, " + str(cool_wind) + " Faan Added.\n"
+Faan += detected_dragon_set[0] + detected_dragon_set[1]
+debug_str += "dragons, " + str(detected_dragon_set[0] + detected_dragon_set[1]) + " Faan Added.\n"
 
 # door free
 if door_free:
     Faan += 1
-# wind
-Faan += cool_wind
-# dragon
-if detected_dragon:
-    Faan += detected_dragon_set[0] + detected_dragon_set[1]
+    debug_str += "door free, 1 Faan Added.\n"
 
 # melds
 if melds[Mahjong.Meld.PONG.value] == 0 and melds[Mahjong.Meld.KONG.value] == 0: # common
     Faan += 1
+    debug_str += "common hand, 1 Faan Added.\n"
+    result_name += " common hand"
 elif melds[Mahjong.Meld.CHOW.value] == 0:
+    Faan += 3
+    debug_str += "triplets, 3 Faan Added.\n"
+    result_name += " triplets"
     if door_free:
-        Faan += 4   # 1 Faan for door free is calculated before
-    else:
-        Faan += 3
+        Faan += 1   # 1 Faan for door free is calculated before
+        debug_str += "door free on triplets, 1 Faan Added.\n"
 
 if Faan < 1:
     print("Error: Invaild Faan calculated")
     print("Faan:", Faan)
-    sys.exit(1)
+    end_program(1, debug_msg, debug_str)
 
-print("Success: Calculation completed")
-print("Faan:", Faan)
-sys.exit(0)
+end_program(0, debug_msg, debug_str, Faan, result_name)
     

@@ -12,10 +12,12 @@ def find_image_files(img_source):
 dir = '.\\Test'
 image_files = find_image_files(dir)
 
+quick_test = False
+
 for image in image_files:
 
     # for debug, skip the files that pass the test before
-    if image.startswith(dir + '\\_'):
+    if quick_test and image.startswith(dir + '\\_'):
         continue
 
     result = subprocess.run(
