@@ -1,3 +1,0 @@
-conda activate yolo-env1
-
-python MaahjongDetect.py --model Model/3/my_model.pt --source TestData/images/test2.png --resolution 1280x1280
