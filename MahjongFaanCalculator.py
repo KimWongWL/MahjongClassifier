@@ -2,6 +2,7 @@ import subprocess
 import argparse
 import sys
 import re
+import os
 import MahjongTile as Mahjong
 
 # calculation functions
@@ -42,6 +43,8 @@ parser.add_argument('--seat_wind', help='Wind for this seat, can be 1, 2, 3, or 
                     default=-1)
 parser.add_argument('--seat', help='Seat : 0 1 2 3 seat off to the dealer, in clockwise direction',
                     default=-1)
+parser.add_argument('--nondebug', help='Forcing the program to run without all debug settings',
+                    default=False)
 args = parser.parse_args()
 
 # Parse user inputs
@@ -52,6 +55,7 @@ ignore_areas = args.ignore
 game_wind = args.game_wind
 seat_wind = args.seat_wind
 seat = args.seat
+nondebug = args.nondebug
 
 ROI_args = []
 if roi_x1 != -1 and roi_y1 != -1 and roi_x2 != -1 and roi_y2 != -1:
@@ -66,9 +70,16 @@ debug_detect_args = []
 if debug_detect:
     debug_detect_args = ["--showRes", "True", "--resolution", "1280x1280"]
 
+if nondebug:
+    debug_msg = False
+    debug_detect = False
+
 # Call mahjong detect script
+cur_dir = os.getcwd()
+path_prefix = os.path.dirname(cur_dir) + "\\MahjongClassifier"
+# print("calling " + path_prefix + "\\MahjongDetect.py with args:")
 result = subprocess.run(
-    ["python", "MahjongDetect.py", "--model", "Model/5/my_model.pt", "--source", img_source, "--threshold", min_threshold] + ROI_args + debug_detect_args + ignore_args,
+    ["python", path_prefix + "\\MahjongDetect.py", "--model", path_prefix + "\\Model/5/my_model.pt", "--source", path_prefix + img_source, "--threshold", min_threshold] + ROI_args + debug_detect_args + ignore_args,
     capture_output=True,
     text=True
 )
