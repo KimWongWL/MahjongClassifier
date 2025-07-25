@@ -27,7 +27,11 @@ for image in image_files:
     )
 
     print("Image:", image)
-    print("Output:", result.stdout)
-    print("Error:", result.stderr)
+    if result.stdout:
+        print("Output:", result.stdout)
+    if result.stderr:
+        print("Error:", result.stderr)
+
+print("All files processed")
 
 sys.exit(0)

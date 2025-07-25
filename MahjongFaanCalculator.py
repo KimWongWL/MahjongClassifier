@@ -65,7 +65,7 @@ ignore_args = []
 if args.ignore:
     ignore_args = ["--ignore"] + [str(coord) for area in ignore_areas for coord in area]
 
-debug_detect = False
+debug_detect = True
 debug_detect_args = []
 if debug_detect:
     debug_detect_args = ["--showRes", "True", "--resolution", "1280x1280"]
@@ -256,13 +256,13 @@ for i in range(detections.__len__()):
         # check for kong melds
         if saved_tiles[0] == saved_tiles[1] == saved_tiles[2] == saved_tiles[3]:
             melds[Mahjong.Meld.KONG.value] += 1
-            saved_tiles = []
             if is_dragon(saved_tiles[0]):
                 detected_dragon_set[1] += 1
                 detected_dragon = True
             elif is_wind(saved_tiles[0]):
                 detected_winds_set[1] += 1
                 detected_wind = True
+            saved_tiles = []
         # check for pong melds
         elif saved_tiles[0] == saved_tiles[1] == saved_tiles[2]:
             melds[Mahjong.Meld.PONG.value] += 1
